@@ -4,13 +4,13 @@ Integrates EU Sanctions Map, UN Security Council, and AI analysis.
 All evidence stored statelessly in DigitalOcean Spaces.
 """
 
-import concurrent.futures
 import json
 import os
 import urllib.parse
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone, date
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 
 import httpx
 import xmltodict
@@ -23,16 +23,7 @@ from pydantic import BaseModel
 
 from storage import (upload_to_spaces, get_presigned_url, generate_audit_folder_path)
 
-# Load environment variables
 load_dotenv()
-
-# Initialize FastAPI
-app = FastAPI(title="Sanctions Screening API",
-              description="Production-ready sanctions screening with EU and UN data sources", version="1.0.0")
-
-# CORS configuration
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"],
-                   allow_headers=["*"])
 
 # Constants
 EU_SANCTIONS_AUTOCOMPLETE_URL = "https://www.sanctionsmap.eu/api/v1/autocomplete/search"
@@ -40,18 +31,45 @@ EU_SANCTIONS_REGIME_URL = "https://www.sanctionsmap.eu/api/v1/regime"
 EU_SANCTIONS_BASE_URL = "https://www.sanctionsmap.eu"
 UN_CONSOLIDATED_URL = "https://scsanctions.un.org/resources/xml/en/consolidated.xml"
 
-# Local cache paths
 LOCAL_CACHE_DIR = Path(__file__).parent / "cache"
 UN_XML_LOCAL_PATH = LOCAL_CACHE_DIR / "consolidated.xml"
 UN_XML_DATE_FILE = LOCAL_CACHE_DIR / "consolidated_date.txt"
 
-# Spaces cache key
 UN_XML_SPACES_KEY = "cache/consolidated.xml"
+
+_un_xml_cache: Optional[bytes] = None
+
+
+# ============== Lifecycle Management ==============
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Handle application startup and shutdown events.
+    Downloads/Loads UN XML data on startup.
+    """
+    global _un_xml_cache
+    try:
+        _un_xml_cache = await ensure_un_xml_cached()
+        print("UN XML ready for sanctions screening")
+    except Exception as e:
+        print(f"Warning: Failed to download UN XML on startup: {e}")
+
+    yield
+    pass
+
+
+app = FastAPI(title="Sanctions Screening API",
+              description="Production-ready sanctions screening with EU and UN data sources", version="1.0.0",
+              lifespan=lifespan)
+
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"],
+                   allow_headers=["*"])
 
 
 class SearchRequest(BaseModel):
     name: str
-    search_type: str = "person"  # "person" or "entity"
+    search_type: str = "person"
 
 
 class SearchResult(BaseModel):
@@ -112,28 +130,23 @@ async def ensure_un_xml_cached() -> bytes:
     today = date.today()
     cached_date = get_cached_un_xml_date()
 
-    # Check if already downloaded today
     if cached_date == today:
         local_content = load_un_xml_locally()
         if local_content:
             print(f"Using locally cached UN XML from {cached_date}")
             return local_content
 
-    # Delete old cache if exists
     if UN_XML_LOCAL_PATH.exists():
         print(f"Deleting old UN XML cache from {cached_date}")
         UN_XML_LOCAL_PATH.unlink()
     if UN_XML_DATE_FILE.exists():
         UN_XML_DATE_FILE.unlink()
 
-    # Download fresh
     print("Downloading fresh UN consolidated XML...")
     xml_content = await download_un_xml()
 
-    # Save locally
     save_un_xml_locally(xml_content)
 
-    # Also upload to DO Spaces for backup
     try:
         upload_to_spaces(xml_content, UN_XML_SPACES_KEY, "application/xml")
         print(f"UN XML synced to Spaces: {UN_XML_SPACES_KEY}")
@@ -143,27 +156,11 @@ async def ensure_un_xml_cached() -> bytes:
     return xml_content
 
 
-# Global variable to hold cached XML
-_un_xml_cache: Optional[bytes] = None
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Download UN XML on application startup."""
-    global _un_xml_cache
-    try:
-        _un_xml_cache = await ensure_un_xml_cached()
-        print("UN XML ready for sanctions screening")
-    except Exception as e:
-        print(f"Warning: Failed to download UN XML on startup: {e}")
-
-
 def get_un_xml() -> Optional[bytes]:
     """Get the cached UN XML content."""
     global _un_xml_cache
     if _un_xml_cache:
         return _un_xml_cache
-    # Try to load from local cache
     return load_un_xml_locally()
 
 
@@ -177,17 +174,13 @@ EU_HEADERS = {"Accept": "application/json, text/plain, */*", "Accept-Language": 
 
 
 async def search_eu_autocomplete(name: str) -> list:
-    """
-    Query EU Sanctions Map autocomplete API.
-    Returns list of matching names.
-    """
+    """Query EU Sanctions Map autocomplete API."""
     async with httpx.AsyncClient(timeout=30.0, headers=EU_HEADERS) as client:
         try:
             response = await client.get(EU_SANCTIONS_AUTOCOMPLETE_URL,
                                         params={"lang": "en", "search": name, "search_type": 1, "limit": 15})
             response.raise_for_status()
             data = response.json()
-            # API returns {"data": ["Name1", "Name2"], "meta": {...}}
             return data.get("data", [])
         except Exception as e:
             print(f"EU Autocomplete API error: {e}")
@@ -195,17 +188,13 @@ async def search_eu_autocomplete(name: str) -> list:
 
 
 async def search_eu_regime(name: str) -> list:
-    """
-    Query EU Sanctions Map regime API for detailed results.
-    Returns list of regime/sanction matches.
-    """
+    """Query EU Sanctions Map regime API for detailed results."""
     async with httpx.AsyncClient(timeout=30.0, headers=EU_HEADERS) as client:
         try:
             response = await client.get(EU_SANCTIONS_REGIME_URL,
                                         params={"lang": "en", "search": name, "search_type": 1})
             response.raise_for_status()
             data = response.json()
-            # API returns {"data": [...regimes...], "meta": {...}}
             return data.get("data", [])
         except Exception as e:
             print(f"EU Regime API error: {e}")
@@ -213,60 +202,39 @@ async def search_eu_regime(name: str) -> list:
 
 
 async def search_eu_sanctions(name: str) -> dict:
-    """
-    Full EU sanctions search: autocomplete + regime details.
-    """
-    # First check autocomplete for name matches
+    """Full EU sanctions search: autocomplete + regime details."""
     autocomplete_matches = await search_eu_autocomplete(name)
 
-    # Check if the searched name actually appears in autocomplete results
-    # This indicates the person/entity actually exists in the EU sanctions list
     name_lower = name.lower()
     name_found_in_autocomplete = any(
         name_lower in match.lower() or match.lower() in name_lower for match in autocomplete_matches)
 
-    # Only fetch regime details if we have an autocomplete match
     regime_matches = []
     if name_found_in_autocomplete:
         regime_matches = await search_eu_regime(name)
 
-    return {"autocomplete": autocomplete_matches, "regimes": regime_matches,
-            # Only mark as found if the name actually appears in autocomplete
-            "found": name_found_in_autocomplete}
-
-
-def generate_eu_deep_link(query: str) -> str:
-    """Generate a deep link URL to the EU Sanctions Map for a search."""
-    search_obj = {"value": query, "searchType": {"id": 1, "title": "regimes, persons, entities"}}
-    search_json = json.dumps(search_obj, separators=(',', ':'))
-    encoded_search = urllib.parse.quote(search_json, safe='')
-    return f"{EU_SANCTIONS_BASE_URL}/#/main?search={encoded_search}"
+    return {"autocomplete": autocomplete_matches, "regimes": regime_matches, "found": name_found_in_autocomplete}
 
 
 def _take_screenshot_as_pdf_sync(url: str, wait_time: int = 5000, wait_for_selector: str = None) -> bytes:
-    """
-    Take a screenshot of a page using Playwright (sync) and return as PDF.
-    Uses sync API to avoid Windows/Python 3.13 asyncio subprocess issues.
-    """
+    """Take a screenshot of a page using Playwright (sync) and return as PDF."""
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
+        # Using dict for viewport is standard in python playwright, ignoring strict type warning is safe here
         context = browser.new_context(viewport={"width": 1920, "height": 1080})
         page = context.new_page()
 
         try:
             page.goto(url, wait_until="networkidle", timeout=60000)
 
-            # Wait for specific content to load (for SPAs like EU Sanctions Map)
             if wait_for_selector:
                 try:
                     page.wait_for_selector(wait_for_selector, timeout=15000)
                 except Exception:
-                    pass  # Continue even if selector not found
+                    pass
 
-            # Additional wait for dynamic content to render
             page.wait_for_timeout(wait_time)
 
-            # Generate PDF in landscape for better sanctions map viewing
             pdf_bytes = page.pdf(format="A4", landscape=True, print_background=True,
                                  margin={"top": "20px", "right": "20px", "bottom": "20px", "left": "20px"})
             return pdf_bytes
@@ -275,13 +243,7 @@ def _take_screenshot_as_pdf_sync(url: str, wait_time: int = 5000, wait_for_selec
 
 
 def _take_eu_sanctions_screenshot_sync(query: str) -> bytes:
-    """
-    Take a screenshot of EU Sanctions Map with the search query.
-    Uses URL-based deep link which properly filters results.
-    """
-    import urllib.parse
-
-    # Generate the deep link URL with proper search encoding
+    """Take a screenshot of EU Sanctions Map with the search query."""
     search_obj = {"value": query, "searchType": {"id": 1, "title": "regimes, persons, entities"}}
     search_json = json.dumps(search_obj, separators=(',', ':'))
     encoded_search = urllib.parse.quote(search_json, safe='')
@@ -293,122 +255,156 @@ def _take_eu_sanctions_screenshot_sync(query: str) -> bytes:
         page = context.new_page()
 
         try:
-            # Go to the search URL
             page.goto(url, wait_until="networkidle", timeout=60000)
-            page.wait_for_timeout(3000)  # Wait for Angular to initialize
+            page.wait_for_timeout(3000)
+            page.wait_for_timeout(5000)
 
-            # Wait for the page to stabilize and process the search parameter
-            page.wait_for_timeout(5000)  # Additional wait for search to filter
-
-            # Scroll down slightly to ensure table is in view
             page.evaluate("window.scrollBy(0, 200)")
             page.wait_for_timeout(1000)
 
-            # Generate PDF in landscape
-            pdf_bytes = page.pdf(format="A4", landscape=True, print_background=True,
-                                 margin={"top": "20px", "right": "20px", "bottom": "20px", "left": "20px"})
+            header_template = '''
+                <div style="font-size: 10px; width: 100%; text-align: center; color: #666;">
+                    <span class="date"></span>
+                    <span style="margin-left: 20px;">EU Sanctions Map</span>
+                </div>
+            '''
+            footer_template = '''
+                <div style="font-size: 9px; width: 100%; padding: 0 20px; display: flex; justify-content: space-between; color: #666;">
+                    <span class="url"></span>
+                    <span><span class="pageNumber"></span>/<span class="totalPages"></span></span>
+                </div>
+            '''
+
+            pdf_bytes = page.pdf(format="A4", landscape=True, print_background=True, display_header_footer=True,
+                                 header_template=header_template, footer_template=footer_template,
+                                 margin={"top": "40px", "right": "20px", "bottom": "40px", "left": "20px"})
             return pdf_bytes
         finally:
             browser.close()
 
 
 async def take_screenshot_as_pdf(url: str, wait_time: int = 5000, wait_for_selector: str = None) -> bytes:
-    """
-    Async wrapper that runs sync Playwright in a thread pool.
-    """
+    """Async wrapper that runs sync Playwright in a thread pool."""
     import asyncio
-    from functools import partial
 
-    loop = None
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        pass
-
-    # Create partial function with all arguments
-    screenshot_func = partial(_take_screenshot_as_pdf_sync, url, wait_time, wait_for_selector)
-
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        if loop:
-            pdf_bytes = await loop.run_in_executor(executor, screenshot_func)
-        else:
-            # Fallback for non-async context
-            pdf_bytes = screenshot_func()
-
-    return pdf_bytes
+    loop = asyncio.get_running_loop()
+    # Pass arguments directly to run_in_executor to avoid partial/args linter warnings
+    return await loop.run_in_executor(None, _take_screenshot_as_pdf_sync, url, wait_time, wait_for_selector)
 
 
 async def take_eu_sanctions_screenshot(query: str) -> bytes:
-    """
-    Async wrapper for EU Sanctions Map screenshot with interaction.
-    """
+    """Async wrapper for EU Sanctions Map screenshot."""
     import asyncio
-    from functools import partial
 
-    loop = None
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        pass
-
-    screenshot_func = partial(_take_eu_sanctions_screenshot_sync, query)
-
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        if loop:
-            pdf_bytes = await loop.run_in_executor(executor, screenshot_func)
-        else:
-            pdf_bytes = screenshot_func()
-
-    return pdf_bytes
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, _take_eu_sanctions_screenshot_sync, query)
 
 
 # ============== UN Security Council Integration ==============
 
+def _ensure_list(data: Any) -> list:
+    """Helper to ensure xmltodict data is always a list."""
+    if data is None:
+        return []
+    if isinstance(data, list):
+        return data
+    return [data]
+
+
+def _process_un_entry(entry: dict, query_parts: list[str], is_person: bool) -> Optional[dict]:
+    """Helper to process a single UN entry (Individual or Entity) and check for matches using token logic."""
+
+    if is_person:
+        first = (entry.get("FIRST_NAME") or "").strip()
+        second = (entry.get("SECOND_NAME") or "").strip()
+        third = (entry.get("THIRD_NAME") or "").strip()
+        fourth = (entry.get("FOURTH_NAME") or "").strip()
+
+        # Construct full name from parts
+        name_parts = [n for n in [first, second, third, fourth] if n]
+        full_name = " ".join(name_parts)
+
+        alias_key = "INDIVIDUAL_ALIAS"
+        display_name = full_name.title()
+
+        # We will check against the full name
+        names_to_check = [full_name]
+    else:
+        entity_name = (entry.get("FIRST_NAME") or "").strip()
+        alias_key = "ENTITY_ALIAS"
+        # Preserve original case for entities if it looks like an acronym (all caps), otherwise title case
+        display_name = entity_name.title() if entity_name.isupper() and len(entity_name) > 4 else entity_name
+        names_to_check = [entity_name]
+
+    # Collect aliases
+    aliases = _ensure_list(entry.get(alias_key))
+    alias_names = []
+    for alias in aliases:
+        a_name = (alias.get("ALIAS_NAME") or "").strip()
+        if a_name:
+            alias_names.append(a_name)
+
+    # Combine all potential targets (Main Name + Aliases)
+    targets = names_to_check + alias_names
+
+    is_match = False
+    matched_target = None
+
+    # Check matches: ALL query parts must appear in at least ONE of the target strings
+    # This allows for order independence (e.g. "Chaudhry Aamir" matching "Aamir Ali Chaudhry")
+    # and partial matching
+    for target in targets:
+        target_lower = target.lower()
+
+        # Verify if all parts of the user query exist in this specific target string
+        # e.g. query "Aamir Chaudhry" -> parts ["aamir", "chaudhry"]
+        # target "Aamir Ali Chaudhry" -> contains both "aamir" and "chaudhry"
+        if all(part in target_lower for part in query_parts):
+            is_match = True
+            matched_target = target
+            break
+
+    if not is_match:
+        return None
+
+    # Update display name if it was only an alias match to show context
+    if matched_target:
+        # Check if the matched name is substantially different from the main display name
+        if matched_target.lower() != display_name.lower() and matched_target.lower() not in display_name.lower():
+            display_name = f"{display_name} (alias: {matched_target})"
+
+    return {"dataid": entry.get("DATAID"), "name": display_name, "un_list_type": entry.get("UN_LIST_TYPE"),
+            "reference_number": entry.get("REFERENCE_NUMBER"), "listed_on": entry.get("LISTED_ON"),
+            "comments": (entry.get("COMMENTS1") or "")[:500]}
+
+
 def search_un_sanctions(xml_content: bytes, name: str, search_type: str) -> list:
     """Parse UN XML and search for matching entries."""
     matches = []
-
     if not xml_content:
         return matches
+
+    # Split query into parts for token-based matching (order independent)
+    query_parts = name.lower().strip().split()
+    if not query_parts:
+        return []
 
     try:
         parsed = xmltodict.parse(xml_content)
         consolidated = parsed.get("CONSOLIDATED_LIST", {})
 
-        name_lower = name.lower()
-
-        # Search individuals
         if search_type == "person":
-            individuals = consolidated.get("INDIVIDUALS", {}).get("INDIVIDUAL", [])
-            if isinstance(individuals, dict):
-                individuals = [individuals]
-
+            individuals = _ensure_list(consolidated.get("INDIVIDUALS", {}).get("INDIVIDUAL"))
             for ind in individuals:
-                first_name = (ind.get("FIRST_NAME") or "").lower()
-                second_name = (ind.get("SECOND_NAME") or "").lower()
-                third_name = (ind.get("THIRD_NAME") or "").lower()
-                full_name = f"{first_name} {second_name} {third_name}".strip()
-
-                if name_lower in full_name or any(name_lower in n for n in [first_name, second_name, third_name] if n):
-                    matches.append({"dataid": ind.get("DATAID"), "name": full_name.title(),
-                                    "un_list_type": ind.get("UN_LIST_TYPE"),
-                                    "reference_number": ind.get("REFERENCE_NUMBER"), "listed_on": ind.get("LISTED_ON"),
-                                    "comments": ind.get("COMMENTS1", "")[:500] if ind.get("COMMENTS1") else ""})
-
-        # Search entities
+                result = _process_un_entry(ind, query_parts, is_person=True)
+                if result:
+                    matches.append(result)
         else:
-            entities = consolidated.get("ENTITIES", {}).get("ENTITY", [])
-            if isinstance(entities, dict):
-                entities = [entities]
-
+            entities = _ensure_list(consolidated.get("ENTITIES", {}).get("ENTITY"))
             for ent in entities:
-                entity_name = (ent.get("FIRST_NAME") or "").lower()
-
-                if name_lower in entity_name:
-                    matches.append({"dataid": ent.get("DATAID"), "name": entity_name.title(),
-                                    "un_list_type": ent.get("UN_LIST_TYPE"),
-                                    "reference_number": ent.get("REFERENCE_NUMBER"), "listed_on": ent.get("LISTED_ON"),
-                                    "comments": ent.get("COMMENTS1", "")[:500] if ent.get("COMMENTS1") else ""})
+                result = _process_un_entry(ent, query_parts, is_person=False)
+                if result:
+                    matches.append(result)
 
     except Exception as e:
         print(f"UN XML parsing error: {e}")
@@ -418,73 +414,197 @@ def search_un_sanctions(xml_content: bytes, name: str, search_type: str) -> list
 
 def generate_un_evidence_html(matches: list, query: str) -> str:
     """Generate HTML evidence document for UN sanctions matches."""
-    timestamp = datetime.now(timezone.utc).isoformat()
+    timestamp = datetime.now(timezone.utc).strftime("%d.%m.%Y %H:%M UTC")
+
+    if matches:
+        status_badge = '<span class="badge badge-high">GĂSIT</span>'
+        status_text = f"{len(matches)} potrivire(i) găsită(e)"
+    else:
+        status_badge = '<span class="badge badge-low">NEGĂSIT</span>'
+        status_text = "Nicio potrivire"
 
     html = f"""<!DOCTYPE html>
-<html lang="en">
+<html lang="ro">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UN Sanctions Evidence - {query}</title>
+    <title>Dovadă ONU - {query}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body {{ font-family: 'Segoe UI', Arial, sans-serif; margin: 40px; background: #f5f5f5; }}
-        .header {{ background: linear-gradient(135deg, #1a237e, #3949ab); color: white; padding: 30px; border-radius: 10px; margin-bottom: 30px; }}
-        .header h1 {{ margin: 0; font-size: 24px; }}
-        .header p {{ margin: 10px 0 0 0; opacity: 0.9; }}
-        .match {{ background: white; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
-        .match h3 {{ color: #c62828; margin-top: 0; }}
-        .match-details {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }}
-        .detail label {{ font-weight: 600; color: #666; display: block; font-size: 12px; text-transform: uppercase; }}
-        .detail span {{ color: #333; }}
-        .no-match {{ background: #e8f5e9; border-left: 4px solid #4caf50; padding: 20px; border-radius: 4px; }}
-        .footer {{ margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 12px; }}
+        :root {{
+            --color-primary: #28274e;
+            --color-bg: #ffffff;
+            --color-white: #ffffff;
+            --color-black: #1a1a1a;
+            --color-gray-100: #f9fafb;
+            --color-gray-200: #e5e7eb;
+            --color-gray-500: #6b7280;
+            --color-gray-600: #4b5563;
+            --color-success: #059669;
+            --color-warning: #d97706;
+            --color-danger: #dc2626;
+            --color-un: #009edb;
+            --radius-sm: 4px;
+            --radius-md: 8px;
+            --radius-lg: 12px;
+        }}
+        
+        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+        
+        body {{
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--color-bg);
+            color: var(--color-black);
+            padding: 40px;
+            -webkit-font-smoothing: antialiased;
+        }}
+        
+        .container {{ max-width: 800px; margin: 0 auto; }}
+        
+        .header {{ margin-bottom: 24px; }}
+        
+        .header-title-row {{
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+        }}
+        
+        h1 {{ font-size: 24px; font-weight: 700; color: var(--color-primary); }}
+        
+        .subtitle {{ font-size: 14px; color: var(--color-gray-600); margin-top: 8px; }}
+        
+        .badge {{
+            display: inline-flex; align-items: center; padding: 4px 10px;
+            font-size: 11px; font-weight: 600; text-transform: uppercase;
+            letter-spacing: 0.3px; border-radius: 4px;
+        }}
+        
+        .badge-low {{ background: #d1fae5; color: var(--color-success); }}
+        .badge-high {{ background: #fee2e2; color: var(--color-danger); }}
+        
+        .summary-card {{
+            background: var(--color-white); border: 1px solid var(--color-gray-200);
+            border-radius: var(--radius-lg); padding: 24px; margin-bottom: 24px;
+        }}
+        
+        .summary-header {{
+            display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;
+        }}
+        
+        .summary-title {{ font-size: 16px; font-weight: 600; }}
+        .summary-text {{ font-size: 14px; color: var(--color-gray-600); }}
+        
+        .result-card {{
+            background: var(--color-white); border: 1px solid var(--color-gray-200);
+            border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 16px;
+        }}
+        
+        .result-card-header {{
+            padding: 16px 20px; background: var(--color-gray-100);
+            border-bottom: 1px solid var(--color-gray-200);
+            display: flex; align-items: center; justify-content: space-between;
+        }}
+        
+        .result-card-title {{ display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 600; }}
+        .result-card-body {{ padding: 20px; }}
+        
+        .match-item {{
+            padding: 14px; background: var(--color-gray-100);
+            border-radius: var(--radius-sm); margin-bottom: 12px;
+            border-left: 3px solid var(--color-warning);
+        }}
+        .match-item:last-child {{ margin-bottom: 0; }}
+        
+        .match-name {{ font-weight: 600; font-size: 15px; margin-bottom: 8px; color: var(--color-danger); }}
+        
+        .match-details {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 10px; }}
+        
+        .detail-item {{ font-size: 13px; }}
+        .detail-label {{ font-weight: 600; color: var(--color-gray-500); text-transform: uppercase; font-size: 11px; display: block; margin-bottom: 2px; }}
+        .detail-value {{ color: var(--color-black); }}
+        
+        .match-comments {{
+            font-size: 13px; color: var(--color-gray-600); line-height: 1.5;
+            margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--color-gray-200);
+        }}
+        
+        .no-match {{
+            padding: 24px; color: var(--color-success); background: #ecfdf5;
+            border-radius: var(--radius-md); border: 1px solid #a7f3d0;
+        }}
+        .no-match h3 {{ font-size: 16px; margin-bottom: 4px; }}
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>🇺🇳 UN Security Council Sanctions Check</h1>
-        <p>Query: <strong>{query}</strong> | Generated: {timestamp}</p>
-    </div>
+    <div class="container">
+        <div class="header">
+            <div class="header-title-row">
+                <h1>Verificare listă consolidată ONU</h1>
+            </div>
+            <p class="subtitle">
+                Interogare: <strong>{query}</strong> | Generat: {timestamp}
+            </p>
+        </div>
+
+        <div class="summary-card">
+            <div class="summary-header">
+                <span class="summary-title">Rezultatul verificării</span>
+                {status_badge}
+            </div>
+            <p class="summary-text">{status_text} în lista consolidată a Consiliului de Securitate ONU.</p>
+        </div>
 """
 
     if matches:
-        html += f"<p><strong>{len(matches)} match(es) found</strong></p>"
+        html += """
+        <div class="result-card">
+            <div class="result-card-header">
+                <div class="result-card-title">Potriviri găsite</div>
+            </div>
+            <div class="result-card-body">
+"""
         for match in matches:
+            comments = match.get('comments', '')
+            comments_html = f'<div class="match-comments">{comments}</div>' if comments else ''
+
             html += f"""
-    <div class="match">
-        <h3>⚠️ {match.get('name', 'Unknown')}</h3>
-        <div class="match-details">
-            <div class="detail">
-                <label>Reference Number</label>
-                <span>{match.get('reference_number', 'N/A')}</span>
-            </div>
-            <div class="detail">
-                <label>List Type</label>
-                <span>{match.get('un_list_type', 'N/A')}</span>
-            </div>
-            <div class="detail">
-                <label>Listed On</label>
-                <span>{match.get('listed_on', 'N/A')}</span>
-            </div>
-            <div class="detail">
-                <label>Data ID</label>
-                <span>{match.get('dataid', 'N/A')}</span>
+                <div class="match-item">
+                    <div class="match-name">{match.get('name', 'Necunoscut')}</div>
+                    <div class="match-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Număr de referință</span>
+                            <span class="detail-value">{match.get('reference_number', 'N/A')}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Tip listă</span>
+                            <span class="detail-value">{match.get('un_list_type', 'N/A')}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Data listării</span>
+                            <span class="detail-value">{match.get('listed_on', 'N/A')}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">ID Date</span>
+                            <span class="detail-value">{match.get('dataid', 'N/A')}</span>
+                        </div>
+                    </div>
+                    {comments_html}
+                </div>
+"""
+        html += """
             </div>
         </div>
-        <p style="margin-top: 15px; color: #666;">{match.get('comments', '')}</p>
-    </div>
 """
     else:
         html += """
-    <div class="no-match">
-        <h3>✅ No Matches Found</h3>
-        <p>The searched name/entity was not found in the UN Security Council consolidated sanctions list.</p>
-    </div>
+        <div class="no-match">
+            <h3>Nicio potrivire găsită</h3>
+            <p>Numele sau entitatea căutată nu a fost găsită în lista consolidată a Consiliului de Securitate ONU.</p>
+        </div>
 """
 
     html += """
-    <div class="footer">
-        <p>Source: UN Security Council Consolidated List | This document is auto-generated evidence for audit purposes.</p>
     </div>
 </body>
 </html>
@@ -498,7 +618,6 @@ def analyze_with_ai(query: str, search_type: str, eu_data: dict, un_matches: lis
     """Use OpenAI to analyze risk and provide summary."""
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key or api_key.startswith("sk-your"):
-        # Fallback if no valid API key
         eu_found = eu_data.get("found", False)
         un_found = len(un_matches) > 0
 
@@ -536,10 +655,12 @@ RISC: [scor]
 SUMAR: [sumarul tau in romana]
 """
 
-        response = client.chat.completions.create(model="gpt-4o-mini", messages=[{"role": "system",
-                                                                                  "content": "Esti un analist de conformitate specializat in verificarea sanctiunilor. Raspunde intotdeauna in limba romana."},
-                                                                                 {"role": "user", "content": context}],
-                                                  max_tokens=300, temperature=0.3)
+        messages = [{"role": "system",
+                     "content": "Esti un analist de conformitate specializat in verificarea sanctiunilor. Raspunde intotdeauna in limba romana."},
+                    {"role": "user", "content": context}]
+
+        response = client.chat.completions.create(model="gpt-4o-mini", messages=messages, max_tokens=300,
+                                                  temperature=0.3)
 
         result = response.choices[0].message.content.strip()
 
@@ -560,7 +681,7 @@ SUMAR: [sumarul tau in romana]
         print(f"AI analysis error: {e}")
         eu_found = eu_data.get("found", False)
         if eu_found or un_matches:
-            return "MEDIU", f"S-au gasit potriviri in bazele de date de sanctiuni. Se recomanda verificare manuala."
+            return "MEDIU", "S-au gasit potriviri in bazele de date de sanctiuni. Se recomanda verificare manuala."
         return "SCAZUT", "Nu s-au gasit potriviri in bazele de date UE sau ONU."
 
 
@@ -578,7 +699,6 @@ async def search_sanctions(request: SearchRequest):
     if search_type not in ["person", "entity"]:
         raise HTTPException(status_code=400, detail="search_type must be 'person' or 'entity'")
 
-    # Generate audit folder path: {entity_name}/{timestamp}/
     audit_folder = generate_audit_folder_path(query)
     evidence_urls = {}
 
@@ -586,12 +706,10 @@ async def search_sanctions(request: SearchRequest):
     eu_data = await search_eu_sanctions(query)
     eu_found = eu_data.get("found", False)
 
-    # Combine EU results for response
     eu_matches = []
     for name in eu_data.get("autocomplete", []):
         eu_matches.append({"type": "person_match", "name": name})
     for regime in eu_data.get("regimes", []):
-        # Safely extract country - can have various nested structures
         country_title = None
         try:
             country_data = regime.get("country")
@@ -607,7 +725,6 @@ async def search_sanctions(request: SearchRequest):
         except Exception:
             pass
 
-        # Safely extract measures
         measure_titles = []
         try:
             measures_data = regime.get("measures")
@@ -634,9 +751,8 @@ async def search_sanctions(request: SearchRequest):
                            "specification": regime.get("specification"), "country": country_title,
                            "measures": measure_titles})
 
-    # 2. Take EU screenshot as PDF - always capture the search page for evidence
+    # 2. Take EU screenshot as PDF
     try:
-        # Use the interactive EU screenshot function that types and searches
         pdf_bytes = await take_eu_sanctions_screenshot(query)
         eu_pdf_key = f"{audit_folder}/evidence_eu.pdf"
         upload_to_spaces(pdf_bytes, eu_pdf_key, "application/pdf")
@@ -653,11 +769,9 @@ async def search_sanctions(request: SearchRequest):
     # 4. Generate UN evidence HTML and convert to PDF
     un_html = generate_un_evidence_html(un_matches, query)
 
-    # Save HTML first
     un_html_key = f"{audit_folder}/evidence_un.html"
     upload_to_spaces(un_html, un_html_key, "text/html")
 
-    # Create UN evidence PDF using browser
     try:
         un_html_url = get_presigned_url(un_html_key)
         un_pdf_bytes = await take_screenshot_as_pdf(un_html_url, wait_time=2000)

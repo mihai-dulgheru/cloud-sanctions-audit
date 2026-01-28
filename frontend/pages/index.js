@@ -13,7 +13,7 @@ export default function Home() {
     e.preventDefault();
 
     if (!name.trim()) {
-      setError("Introduceti un nume sau o entitate pentru cautare");
+      setError("Introduceți un nume sau o companie pentru căutare");
       return;
     }
 
@@ -29,14 +29,14 @@ export default function Home() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          name: name.trim(),
+          name: name.trim().toUpperCase(),
           search_type: searchType,
         }),
       });
 
       if (!response.ok) {
         const errData = await response.json();
-        throw new Error(errData.detail || "Cautarea a esuat");
+        throw new Error(errData.detail || "Căutarea a eșuat");
       }
 
       const data = await response.json();
@@ -44,7 +44,7 @@ export default function Home() {
       router.push("/results");
     } catch (err) {
       console.error("Search error:", err);
-      setError(err.message || "A aparut o eroare in timpul cautarii");
+      setError(err.message || "A apărut o eroare în timpul căutării");
     } finally {
       setLoading(false);
     }
@@ -53,10 +53,10 @@ export default function Home() {
   return (
     <>
       <Head>
-        <title>Verificare Sanctiuni | Conformitate</title>
+        <title>Verificare sancțiuni</title>
         <meta
           name="description"
-          content="Verificati persoane si entitati in bazele de date UE si ONU privind sanctiunile"
+          content="Verificați persoane și entități în bazele de date UE și ONU privind sancțiunile"
         />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/favicon.ico" />
@@ -67,12 +67,12 @@ export default function Home() {
           <header className="page-header">
             <div className="logo">
               <div className="logo-icon">VS</div>
-              <span className="logo-text">Verificare Sanctiuni</span>
+              <span className="logo-text">Verificare sancțiuni</span>
             </div>
-            <h1>Verificare Sanctiuni Internationale</h1>
+            <h1>Verificare sancțiuni internaționale</h1>
             <p className="subtitle">
-              Verificati persoanele si entitatile in bazele de date
-              internationale cu colectare automata a dovezilor si analiza de
+              Verificați persoanele și entitățile în bazele de date
+              internaționale cu colectare automată a dovezilor și analiza de
               risc.
             </p>
           </header>
@@ -81,13 +81,13 @@ export default function Home() {
             <form className="search-form card" onSubmit={handleSubmit}>
               <div className="form-group">
                 <label className="form-label" htmlFor="name">
-                  Nume sau Entitate
+                  Nume
                 </label>
                 <input
                   type="text"
                   id="name"
                   className="form-input"
-                  placeholder="Introduceti numele persoanei sau companiei..."
+                  placeholder="Introduceți numele persoanei sau companiei..."
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   disabled={loading}
@@ -97,7 +97,7 @@ export default function Home() {
 
               <div className="form-group">
                 <label className="form-label" htmlFor="searchType">
-                  Tip Cautare
+                  Tip căutare
                 </label>
                 <select
                   id="searchType"
@@ -106,26 +106,12 @@ export default function Home() {
                   onChange={(e) => setSearchType(e.target.value)}
                   disabled={loading}
                 >
-                  <option value="person">Persoana Fizica</option>
-                  <option value="entity">Companie / Entitate</option>
+                  <option value="person">Persoană fizică</option>
+                  <option value="entity">Companie</option>
                 </select>
               </div>
 
-              {error && (
-                <div
-                  style={{
-                    padding: "12px",
-                    background: "#fee2e2",
-                    border: "1px solid #fecaca",
-                    borderRadius: "6px",
-                    color: "#dc2626",
-                    marginBottom: "20px",
-                    fontSize: "14px",
-                  }}
-                >
-                  {error}
-                </div>
-              )}
+              {error && <div className="error-message">{error}</div>}
 
               <button
                 type="submit"
@@ -135,60 +121,20 @@ export default function Home() {
                 {loading ? (
                   <>
                     <div className="spinner"></div>
-                    Se verifica...
+                    Se verifică...
                   </>
                 ) : (
-                  "Incepe Verificarea"
+                  "Începe verificarea"
                 )}
               </button>
 
               {loading && (
-                <p
-                  style={{
-                    textAlign: "center",
-                    marginTop: "14px",
-                    color: "var(--color-gray-500)",
-                    fontSize: "13px",
-                  }}
-                >
-                  Se interogheaza bazele de date UE si ONU...
+                <p className="loading-text">
+                  Se interoghează bazele de date UE și ONU...
                 </p>
               )}
             </form>
-
-            <div className="features-grid">
-              <div className="feature-card">
-                <div className="feature-icon">UE</div>
-                <h3 className="feature-title">Harta Sanctiunilor UE</h3>
-                <p className="feature-desc">
-                  Verificare in baza de date oficiala a masurilor restrictive UE
-                </p>
-              </div>
-
-              <div className="feature-card">
-                <div className="feature-icon">ONU</div>
-                <h3 className="feature-title">Consiliul de Securitate ONU</h3>
-                <p className="feature-desc">
-                  Verificare in lista consolidata de sanctiuni ONU
-                </p>
-              </div>
-
-              <div className="feature-card">
-                <div className="feature-icon">AI</div>
-                <h3 className="feature-title">Analiza de Risc</h3>
-                <p className="feature-desc">
-                  Evaluare automata a riscului si recomandari de conformitate
-                </p>
-              </div>
-            </div>
           </section>
-
-          <footer className="footer">
-            <p>
-              Verificare Sanctiuni | Arhitectura Stateless | Dovezi stocate in
-              DigitalOcean Spaces
-            </p>
-          </footer>
         </main>
       </div>
     </>

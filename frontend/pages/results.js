@@ -25,94 +25,90 @@ export default function Results() {
 
   if (loading || !results) {
     return (
-      <div
-        className="page"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <div
-          className="spinner"
-          style={{ width: "40px", height: "40px", borderWidth: "3px" }}
-        ></div>
+      <div className="page loading-container">
+        <div className="spinner loading-spinner-large"></div>
       </div>
     );
   }
 
   const getRiskBadgeClass = (risk) => {
-    if (!risk) return "badge-low";
+    if (!risk) {
+      return "badge-low";
+    }
     const r = risk.toUpperCase();
-    if (r === "CRITICAL" || r === "CRITIC") return "badge-critical";
-    if (r === "HIGH" || r === "RIDICAT") return "badge-high";
-    if (r === "MEDIUM" || r === "MEDIU") return "badge-medium";
+    if (r === "CRITICAL" || r === "CRITIC") {
+      return "badge-critical";
+    }
+    if (r === "HIGH" || r === "RIDICAT") {
+      return "badge-high";
+    }
+    if (r === "MEDIUM" || r === "MEDIU") {
+      return "badge-medium";
+    }
     return "badge-low";
   };
 
   const getRiskLabel = (risk) => {
-    if (!risk) return "SCAZUT";
+    if (!risk) {
+      return "SCĂZUT";
+    }
     const r = risk.toUpperCase();
-    if (r === "CRITICAL") return "CRITIC";
-    if (r === "HIGH") return "RIDICAT";
-    if (r === "MEDIUM") return "MEDIU";
-    if (r === "LOW") return "SCAZUT";
+    if (r === "CRITICAL") {
+      return "CRITIC";
+    }
+    if (r === "HIGH") {
+      return "RIDICAT";
+    }
+    if (r === "MEDIUM") {
+      return "MEDIU";
+    }
+    if (r === "LOW") {
+      return "SCĂZUT";
+    }
     return risk;
   };
 
   const getSearchTypeLabel = (type) => {
-    return type === "person" ? "Persoana" : "Entitate";
+    return type === "person" ? "Persoană" : "Companie";
   };
 
   return (
     <>
       <Head>
-        <title>Rezultate - {results.query} | Verificare Sanctiuni</title>
+        <title>Rezultate - {results.query} | Verificare sancțiuni</title>
         <meta
           name="description"
-          content={`Rezultatele verificarii pentru ${results.query}`}
+          content={`Rezultatele verificării pentru ${results.query}`}
         />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </Head>
 
       <div className="page">
         <main className="container">
-          <header
-            className="page-header"
-            style={{ textAlign: "left", paddingBottom: "16px" }}
-          >
+          <header className="page-header header-left-aligned">
             <Link href="/" className="back-link">
-              ← Inapoi la Cautare
+              ← Înapoi la căutare
             </Link>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "12px",
-                flexWrap: "wrap",
-              }}
-            >
-              <h1 style={{ marginBottom: 0 }}>Rezultatele Verificarii</h1>
+            <div className="header-title-row">
+              <h1 className="header-title-no-margin">
+                Rezultatele verificării
+              </h1>
               <span
                 className={`badge ${getRiskBadgeClass(results.risk_score)}`}
               >
                 Risc {getRiskLabel(results.risk_score)}
               </span>
             </div>
-            <p
-              className="subtitle"
-              style={{ margin: "10px 0 0 0", maxWidth: "none" }}
-            >
+            <p className="subtitle subtitle-no-max-width">
               Interogare: <strong>{results.query}</strong> | Tip:{" "}
               <strong>{getSearchTypeLabel(results.search_type)}</strong>
             </p>
           </header>
 
           <section className="page-content">
-            {/* Summary Card */}
             <div className="summary-card">
               <div className="summary-header">
-                <div className="summary-title">Analiza de Risc</div>
+                <div className="summary-title">Analiza de risc</div>
                 <span
                   className={`badge ${getRiskBadgeClass(results.risk_score)}`}
                 >
@@ -120,23 +116,21 @@ export default function Results() {
                 </span>
               </div>
               <p className="summary-text">
-                {results.ai_summary || "Nu exista analiza disponibila."}
+                {results.ai_summary || "Nu există analiza disponibilă."}
               </p>
             </div>
 
-            {/* Results Grid */}
             <div className="results-grid">
-              {/* EU Sanctions Card */}
               <div className="result-card">
                 <div className="result-card-header">
                   <div className="result-card-title">
                     <div className="result-card-icon eu">UE</div>
-                    Harta Sanctiunilor UE
+                    Harta Sancțiunilor UE
                   </div>
                   <span
                     className={`badge ${results.eu_found ? "badge-high" : "badge-low"}`}
                   >
-                    {results.eu_found ? "GASIT" : "NEGASIT"}
+                    {results.eu_found ? "GĂSIT" : "NEGĂSIT"}
                   </span>
                 </div>
                 <div className="result-card-body">
@@ -149,7 +143,7 @@ export default function Results() {
                               <>
                                 <div className="match-name">{match.name}</div>
                                 <div className="match-details">
-                                  Persoana gasita in sanctiunile UE
+                                  Persoană găsită în sancțiunile UE
                                 </div>
                               </>
                             ) : (
@@ -164,18 +158,12 @@ export default function Results() {
                                     </span>
                                   )}
                                   {match.country && (
-                                    <span> | Tara: {match.country}</span>
+                                    <span> | Țara: {match.country}</span>
                                   )}
                                 </div>
                                 {match.measures?.length > 0 && (
-                                  <div
-                                    style={{
-                                      marginTop: "6px",
-                                      fontSize: "12px",
-                                      color: "var(--color-gray-500)",
-                                    }}
-                                  >
-                                    Masuri:{" "}
+                                  <div className="match-measures">
+                                    Măsuri:{" "}
                                     {match.measures.filter(Boolean).join(", ")}
                                   </div>
                                 )}
@@ -187,13 +175,12 @@ export default function Results() {
                     </>
                   ) : (
                     <div className="no-match">
-                      <p>Nicio potrivire in baza de date UE</p>
+                      <p>Nicio potrivire în baza de date UE</p>
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* UN Security Council Card */}
               <div className="result-card">
                 <div className="result-card-header">
                   <div className="result-card-title">
@@ -203,7 +190,7 @@ export default function Results() {
                   <span
                     className={`badge ${results.un_found ? "badge-high" : "badge-low"}`}
                   >
-                    {results.un_found ? "GASIT" : "NEGASIT"}
+                    {results.un_found ? "GĂSIT" : "NEGĂSIT"}
                   </span>
                 </div>
                 <div className="result-card-body">
@@ -226,36 +213,21 @@ export default function Results() {
                           </li>
                         ))}
                       </ul>
-                      {results.evidence_urls?.un_evidence && (
-                        <div className="iframe-container">
-                          <iframe
-                            src={results.evidence_urls.un_evidence}
-                            title="Dovada Sanctiuni ONU"
-                          />
-                        </div>
-                      )}
                     </>
                   ) : (
                     <div className="no-match">
-                      <p>Nicio potrivire in lista consolidata ONU</p>
+                      <p>Nicio potrivire în lista consolidată ONU</p>
                     </div>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* Evidence Section */}
             <div className="evidence-section">
-              <h2 className="evidence-title">Fisiere Dovezi Audit</h2>
-              <p
-                style={{
-                  color: "var(--color-gray-500)",
-                  marginBottom: "16px",
-                  fontSize: "13px",
-                }}
-              >
-                Toate dovezile sunt stocate securizat. Link-urile expira in 1
-                ora.
+              <h2 className="evidence-title">Fișiere dovezi audit</h2>
+              <p className="evidence-description">
+                Toate dovezile sunt stocate securizat. Link-urile expiră în 1
+                oră.
               </p>
               <div className="evidence-grid">
                 {results.evidence_urls?.eu_evidence && (
@@ -267,7 +239,7 @@ export default function Results() {
                   >
                     <div className="evidence-link-icon">PDF</div>
                     <div className="evidence-link-text">
-                      <div className="evidence-link-title">Dovada UE</div>
+                      <div className="evidence-link-title">Dovadă UE</div>
                       <div className="evidence-link-desc">evidence_eu.pdf</div>
                     </div>
                   </a>
@@ -282,82 +254,20 @@ export default function Results() {
                   >
                     <div className="evidence-link-icon">PDF</div>
                     <div className="evidence-link-text">
-                      <div className="evidence-link-title">Dovada ONU</div>
+                      <div className="evidence-link-title">Dovadă ONU</div>
                       <div className="evidence-link-desc">evidence_un.pdf</div>
-                    </div>
-                  </a>
-                )}
-
-                {results.evidence_urls?.raw_data && (
-                  <a
-                    href={results.evidence_urls.raw_data}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="evidence-link"
-                  >
-                    <div className="evidence-link-icon">JSON</div>
-                    <div className="evidence-link-text">
-                      <div className="evidence-link-title">Date Brute</div>
-                      <div className="evidence-link-desc">raw_data.json</div>
-                    </div>
-                  </a>
-                )}
-
-                {results.evidence_urls?.audit_log && (
-                  <a
-                    href={results.evidence_urls.audit_log}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="evidence-link"
-                  >
-                    <div className="evidence-link-icon">TXT</div>
-                    <div className="evidence-link-text">
-                      <div className="evidence-link-title">Jurnal Audit</div>
-                      <div className="evidence-link-desc">audit_log.txt</div>
                     </div>
                   </a>
                 )}
               </div>
 
               {results.audit_folder && (
-                <p
-                  style={{
-                    marginTop: "16px",
-                    color: "var(--color-gray-500)",
-                    fontSize: "12px",
-                    fontFamily: "monospace",
-                  }}
-                >
-                  Cale Stocare: {results.audit_folder}/
+                <p className="storage-path">
+                  Cale stocare: {results.audit_folder}/
                 </p>
               )}
             </div>
-
-            {/* Actions */}
-            <div
-              style={{
-                display: "flex",
-                gap: "12px",
-                marginTop: "40px",
-                justifyContent: "center",
-                flexWrap: "wrap",
-              }}
-            >
-              <Link href="/" className="btn btn-primary btn-lg">
-                Cautare Noua
-              </Link>
-              <button
-                className="btn btn-secondary btn-lg"
-                onClick={() => window.print()}
-              >
-                Printeaza Raport
-              </button>
-            </div>
           </section>
-
-          <footer className="footer">
-            <p>Verificare Sanctiuni | Folder Audit: {results.audit_folder}</p>
-          </footer>
         </main>
       </div>
     </>
