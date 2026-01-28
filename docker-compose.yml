@@ -1,10 +1,9 @@
-version: '3.8'
-
 services:
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    image: sanctions-backend:latest
     container_name: sanctions-backend
     ports:
       - "8000:8000"
@@ -13,26 +12,54 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+    labels:
+      - "com.digitalocean.app=sanctions-audit"
+      - "com.digitalocean.service=backend"
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL:-http://localhost:8000}
+    image: sanctions-frontend:latest
     container_name: sanctions-frontend
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_BACKEND_URL=http://backend:8000
-      - BACKEND_URL=http://backend:8000
+      - NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL:-http://backend:8000}
+      - BACKEND_URL=${BACKEND_URL:-http://backend:8000}
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 128M
+    healthcheck:
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      - "com.digitalocean.app=sanctions-audit"
+      - "com.digitalocean.service=frontend"
 
 networks:
   default:

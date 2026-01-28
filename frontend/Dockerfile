@@ -1,5 +1,11 @@
-# Frontend Dockerfile
+# Frontend Dockerfile optimized for DigitalOcean deployment
 FROM node:20-alpine AS base
+
+# Labels for container identification
+LABEL maintainer="Sanctions Audit Team"
+LABEL org.opencontainers.image.title="Sanctions Frontend"
+LABEL org.opencontainers.image.description="Next.js frontend for sanctions screening"
+LABEL com.digitalocean.app="sanctions-audit"
 
 # Install dependencies only when needed
 FROM base AS deps
@@ -7,13 +13,17 @@ WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --only=production=false
 
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+
+# Build arguments for environment variables
+ARG NEXT_PUBLIC_BACKEND_URL
+ENV NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL}
 
 # Set environment variables for build
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -28,6 +38,9 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+
+# Install wget for healthcheck
+RUN apk add --no-cache wget
 
 # Create non-root user
 RUN addgroup --system --gid 1001 nodejs
@@ -44,5 +57,9 @@ EXPOSE 3000
 
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1
 
 CMD ["node", "server.js"]
