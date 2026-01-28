@@ -308,22 +308,6 @@ cloud-sanctions-audit/
 - `GET /health` - Health check
 - `GET /docs` - Interactive API documentation
 
-## 🗄️ Storage Structure
-
-```text
-bucket/
-├── cache/
-│   └── consolidated.xml     # UN sanctions cache
-└── audit_logs/
-    └── {YEAR}/
-        └── {MONTH}/
-            └── {NAME}_{TIMESTAMP}/
-                ├── evidence_eu.png
-                ├── evidence_un.html
-                ├── raw_data.json
-                └── audit_log.txt
-```
-
 ## 🔒 Security Considerations
 
 - Non-root users in Docker containers
