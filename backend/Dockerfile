@@ -29,9 +29,9 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Install Playwright browsers
 RUN playwright install chromium --with-deps
 
-# Create non-root user for security
-RUN groupadd --system --gid 1001 appgroup && \
-    useradd --system --uid 1001 --gid appgroup appuser
+# Create non-root user for security (using 1002 to avoid GID conflict with base image)
+RUN groupadd --system --gid 1002 appgroup && \
+    useradd --system --uid 1002 --gid appgroup appuser
 
 # Copy application code
 COPY --chown=appuser:appgroup . .
