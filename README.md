@@ -198,7 +198,7 @@ Create `app.yaml` in the project root:
 
 ```yaml
 name: sanctions-audit
-region: nyc
+region: fra1
 services:
   - name: backend
     image:
