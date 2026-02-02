@@ -416,7 +416,6 @@ export default function Results() {
                     <div className="folder-icon">📂</div>
                     <div className="folder-info">
                       <div className="folder-name">{results.audit_folder}/</div>
-                      <div className="folder-path">Cale stocare completa</div>
                     </div>
                   </div>
 

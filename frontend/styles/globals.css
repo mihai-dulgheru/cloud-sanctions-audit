@@ -1039,13 +1039,6 @@ h3 {
   gap: 6px;
 }
 
-.file-meta::before {
-  content: "•";
-  display: inline-block;
-  margin-right: -3px;
-  opacity: 0;
-}
-
 .file-action {
   width: 32px;
   height: 32px;
