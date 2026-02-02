@@ -45,7 +45,6 @@ export default function Home() {
     } catch (err) {
       console.error("Search error:", err);
       setError(err.message || "A apărut o eroare în timpul căutării");
-    } finally {
       setLoading(false);
     }
   };
@@ -136,6 +135,26 @@ export default function Home() {
             </form>
           </section>
         </main>
+
+        {loading && (
+          <div className="loading-overlay">
+            <div className="loading-overlay-content">
+              <div className="loading-animation">
+                <div className="scan-line"></div>
+                <div className="search-icon">🔍</div>
+              </div>
+              <h2 className="loading-overlay-title">Verificare în curs</h2>
+              <p className="loading-overlay-text">
+                Se verifică bazele de date UE și ONU...
+              </p>
+              <div className="loading-dots">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
