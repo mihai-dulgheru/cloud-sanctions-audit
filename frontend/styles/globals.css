@@ -923,3 +923,184 @@ h3 {
     transform: scale(1.05);
   }
 }
+
+/* ============== File Explorer ============== */
+.file-explorer {
+  background: var(--color-white);
+  border: 1px solid var(--color-gray-200);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.folder-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
+  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+  border-bottom: 1px solid var(--color-gray-200);
+}
+
+.folder-icon {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.folder-info {
+  flex: 1;
+}
+
+.folder-name {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--color-primary);
+  font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Code", monospace;
+  margin-bottom: 4px;
+}
+
+.folder-path {
+  font-size: 12px;
+  color: var(--color-gray-500);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  font-weight: 500;
+}
+
+.files-list {
+  padding: 8px;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 12px;
+  border-radius: var(--radius-md);
+  transition: all 0.2s ease;
+  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+}
+
+.file-item:hover {
+  background: var(--color-gray-100);
+  text-decoration: none;
+  transform: translateX(4px);
+}
+
+.file-item:active {
+  transform: translateX(2px);
+}
+
+.file-icon {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.file-icon.text-file {
+  background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%);
+}
+
+.file-icon.pdf-file {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+}
+
+.file-icon.json-file {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+}
+
+.file-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.file-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--color-black);
+  margin-bottom: 3px;
+  font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Code", monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-meta {
+  font-size: 12px;
+  color: var(--color-gray-500);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.file-meta::before {
+  content: "•";
+  display: inline-block;
+  margin-right: -3px;
+  opacity: 0;
+}
+
+.file-action {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+  color: white;
+  font-size: 18px;
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  flex-shrink: 0;
+}
+
+.file-item:hover .file-action {
+  opacity: 1;
+}
+
+@media (max-width: 640px) {
+  .folder-header {
+    padding: 14px 16px;
+  }
+
+  .folder-icon {
+    font-size: 24px;
+  }
+
+  .folder-name {
+    font-size: 13px;
+  }
+
+  .file-item {
+    padding: 12px 10px;
+  }
+
+  .file-icon {
+    width: 40px;
+    height: 40px;
+    font-size: 20px;
+  }
+
+  .file-name {
+    font-size: 13px;
+  }
+
+  .file-meta {
+    font-size: 11px;
+  }
+
+  .file-action {
+    width: 28px;
+    height: 28px;
+    font-size: 16px;
+    opacity: 1;
+  }
+}

@@ -404,47 +404,94 @@ export default function Results() {
             </div>
 
             <div className="evidence-section">
-              <h2 className="evidence-title">Fișiere dovezi audit</h2>
+              <h2 className="evidence-title">📁 Fișiere audit</h2>
               <p className="evidence-description">
-                Toate dovezile sunt stocate securizat. Link-urile expiră în 1
-                oră.
+                Toate dovezile sunt stocate securizat în DigitalOcean Spaces.
+                Link-urile expiră în 1 oră.
               </p>
-              <div className="evidence-grid">
-                {results.evidence_urls?.eu_evidence && (
-                  <a
-                    href={results.evidence_urls.eu_evidence}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="evidence-link"
-                  >
-                    <div className="evidence-link-icon">PDF</div>
-                    <div className="evidence-link-text">
-                      <div className="evidence-link-title">Dovadă UE</div>
-                      <div className="evidence-link-desc">evidence_eu.pdf</div>
-                    </div>
-                  </a>
-                )}
-
-                {results.evidence_urls?.un_evidence && (
-                  <a
-                    href={results.evidence_urls.un_evidence}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="evidence-link"
-                  >
-                    <div className="evidence-link-icon">PDF</div>
-                    <div className="evidence-link-text">
-                      <div className="evidence-link-title">Dovadă ONU</div>
-                      <div className="evidence-link-desc">evidence_un.pdf</div>
-                    </div>
-                  </a>
-                )}
-              </div>
 
               {results.audit_folder && (
-                <p className="storage-path">
-                  Cale stocare: {results.audit_folder}/
-                </p>
+                <div className="file-explorer">
+                  <div className="folder-header">
+                    <div className="folder-icon">📂</div>
+                    <div className="folder-info">
+                      <div className="folder-name">{results.audit_folder}/</div>
+                      <div className="folder-path">Cale stocare completa</div>
+                    </div>
+                  </div>
+
+                  <div className="files-list">
+                    {results.evidence_urls?.audit_log && (
+                      <a
+                        href={results.evidence_urls.audit_log}
+                        download="audit_log.txt"
+                        className="file-item"
+                      >
+                        <div className="file-icon text-file">📄</div>
+                        <div className="file-info">
+                          <div className="file-name">audit_log.txt</div>
+                          <div className="file-meta">
+                            Text • Jurnal complet audit
+                          </div>
+                        </div>
+                        <div className="file-action">↓</div>
+                      </a>
+                    )}
+
+                    {results.evidence_urls?.eu_evidence && (
+                      <a
+                        href={results.evidence_urls.eu_evidence}
+                        download="evidence_eu.pdf"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="file-item"
+                      >
+                        <div className="file-icon pdf-file">📕</div>
+                        <div className="file-info">
+                          <div className="file-name">evidence_eu.pdf</div>
+                          <div className="file-meta">
+                            PDF • Dovadă sancțiuni UE
+                          </div>
+                        </div>
+                        <div className="file-action">↓</div>
+                      </a>
+                    )}
+
+                    {results.evidence_urls?.un_evidence && (
+                      <a
+                        href={results.evidence_urls.un_evidence}
+                        download="evidence_un.pdf"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="file-item"
+                      >
+                        <div className="file-icon pdf-file">📘</div>
+                        <div className="file-info">
+                          <div className="file-name">evidence_un.pdf</div>
+                          <div className="file-meta">
+                            PDF • Dovadă sancțiuni ONU
+                          </div>
+                        </div>
+                        <div className="file-action">↓</div>
+                      </a>
+                    )}
+
+                    {results.evidence_urls?.raw_data && (
+                      <a
+                        href={results.evidence_urls.raw_data}
+                        download="raw_data.json"
+                        className="file-item"
+                      >
+                        <div className="file-icon json-file">📊</div>
+                        <div className="file-info">
+                          <div className="file-name">raw_data.json</div>
+                          <div className="file-meta">JSON • Date brute API</div>
+                        </div>
+                        <div className="file-action">↓</div>
+                      </a>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
           </section>
