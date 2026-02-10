@@ -50,7 +50,7 @@ export default function Results() {
 
   const getRiskLabel = (risk) => {
     if (!risk) {
-      return "SCĂZUT";
+      return "SCAZUT";
     }
     const r = risk.toUpperCase();
     if (r === "CRITICAL") {
@@ -63,7 +63,7 @@ export default function Results() {
       return "MEDIU";
     }
     if (r === "LOW") {
-      return "SCĂZUT";
+      return "SCAZUT";
     }
     return risk;
   };
